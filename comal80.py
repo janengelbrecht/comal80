@@ -755,16 +755,23 @@ class Interpreter:
         if name in self.globals:
             return self.globals[name]
             
-        default_val = "" if name.endswith('$') else 0
+        # Hent basisnavnet for at kunne tjekke typen korrekt
+        base_name = name.split('(')[0] if '(' in name else name
+        default_val = "" if base_name.endswith('$') else 0
+        
         self.set_var(name, default_val)
         return default_val
 
     def set_var(self, name, value):
         name = name.upper()
-        if name.endswith('%'):
+        
+        # Hent basisnavnet for at kunne tjekke typen korrekt
+        base_name = name.split('(')[0] if '(' in name else name
+        
+        if base_name.endswith('%'):
             try: value = int(float(value))
             except: value = 0
-        elif name.endswith('$'):
+        elif base_name.endswith('$'):
             value = str(value)
         else:
             try: value = float(value)
@@ -813,10 +820,6 @@ class Interpreter:
 
     def visit_FuncCall(self, node):
         name = node.name.upper()
-        
-        # Her ville man normalt tjekke om 'name' er en indbygget funktion (SIN, COS, CHR$)
-        # eller en brugerdefineret FUNC.
-        # Indtil vi får bygget rigtige funktioner, behandler vi alt som et Array-opslag:
         
         indices = tuple(int(self.visit(arg)) for arg in node.args)
         array_key = f"{name}{indices}"
