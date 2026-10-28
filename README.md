@@ -1,5 +1,5 @@
 # RC759 COMAL-80 Fortolker
-
+ 
 En komplet COMAL-80 fortolker skrevet i Python, komplet med en PySide6-baseret terminal, der emulerer den klassiske Regnecentralen RC759 Piccoline oplevelse fra 1980'erne.
 
 Projektet bygger på klassisk compiler-arkitektur med en Lexer, en Recursive Descent Parser (AST) og en Interpreter.
