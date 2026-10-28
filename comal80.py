@@ -4,6 +4,7 @@ import re
 import math
 import time
 import random
+import tempfile
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Tuple, Callable
 
@@ -18,6 +19,8 @@ from PySide6.QtGui import (
     QAction, QKeySequence, QTextCharFormat
 )
 from PySide6.QtCore import Qt, QTimer, QPointF, QRectF
+
+COMAL80_VERSION = "1.1"
 
 
 # ============================================================================
@@ -1469,8 +1472,10 @@ class Interpreter:
     def __init__(self, ast_root: Block, ui_print: Callable, ui_input: Callable,
                  ui_cursor: Optional[Callable] = None, ui_clear: Optional[Callable] = None,
                  graphics_cb: Optional[Callable] = None, debug_hook: Optional[Callable] = None,
-                 key_provider: Optional[Callable] = None):
+                 key_provider: Optional[Callable] = None,
+                 base_dir: Optional[str] = None):
         self.ast = ast_root
+        self.base_dir = base_dir
         self.ui_print = ui_print
         self.ui_input = ui_input
         self.ui_cursor = ui_cursor
@@ -1651,12 +1656,11 @@ class Interpreter:
         n = len(text)
         start_idx = int(self.visit(start_node)) if start_node is not None else 1
         end_idx = int(self.visit(end_node)) if end_node is not None else n
-        if start_idx < 1 or end_idx < start_idx - 1 or end_idx > n:
-            if start_idx < 1 or start_idx > max(1, n) or end_idx > n:
-                raise InterpreterError(
-                    f"Strengindeks ({start_idx}:{end_idx}) uden for strengens længde ({n})",
-                    self.current_line, code=44
-                )
+        if start_idx < 1 or end_idx < start_idx or end_idx > n:
+            raise InterpreterError(
+                f"Strengindeks ({start_idx}:{end_idx}) uden for strengens længde ({n})",
+                self.current_line, code=44
+            )
         return text[start_idx - 1: end_idx]
 
     def _apply_slice_write(self, old_text: str, slice_range: Tuple[Optional[AST], Optional[AST]], new_part: str) -> str:
@@ -2540,6 +2544,56 @@ class Interpreter:
                 raise InterpreterError(f"RESTORE-destination '{node.label}' blev ikke fundet", self.current_line)
             self.data_ptr = self.data_labels[lbl]
 
+    def _file_candidates(self, fname: str) -> List[str]:
+        """Absolutte kandidatstier for en data-fil.
+
+        Relative filnavne løses mod arbejdsmappen, programmets eget bibliotek og
+        til sidst temp-mappen. Findes filen allerede et sted, bruges den placering
+        først (så en fil der er skrevet til temp også kan læses/slettes igen).
+        """
+        fname = os.path.expanduser(fname)
+        if os.path.isabs(fname):
+            return [fname]
+        dirs: List[str] = []
+        for d in (os.getcwd(), self.base_dir, tempfile.gettempdir(), os.path.expanduser('~')):
+            if not d:
+                continue
+            d = os.path.abspath(os.path.expanduser(d))
+            if d not in dirs:
+                dirs.append(d)
+        paths = [os.path.join(d, fname) for d in dirs]
+        existing = [p for p in paths if os.path.exists(p)]
+        return existing + [p for p in paths if p not in existing]
+
+    def _open_data_file(self, fname: str, py_mode: str) -> Tuple[Any, str, bool]:
+        """Åbner en data-fil og falder tilbage til et skrivbart bibliotek.
+
+        Programmet kan være startet fra en app-bundle eller Finder, hvor
+        arbejdsmappen er skrivebeskyttet (Errno 13). Derfor prøves flere
+        kandidatstier, og tredje returværdi angiver at der blev flyttet væk
+        fra arbejdsmappen pga. manglende skrivetilladelse.
+        """
+        cwd_path = None if os.path.isabs(os.path.expanduser(fname)) else os.path.join(os.getcwd(), os.path.expanduser(fname))
+        denied = False
+        last_err: Optional[Exception] = None
+        tried: List[str] = []
+        for path in self._file_candidates(fname):
+            tried.append(path)
+            try:
+                if py_mode == 'r+' and not os.path.exists(path):
+                    with open(path, 'w', encoding='utf-8'):
+                        pass
+                handle = open(path, py_mode, encoding='utf-8')
+                return handle, path, (denied and path != cwd_path)
+            except PermissionError as e:
+                last_err = e
+                if cwd_path is not None and path == cwd_path:
+                    denied = True
+            except OSError as e:
+                last_err = e
+        reason = str(last_err) if last_err is not None else 'ukendt fejl'
+        raise OSError(f"{reason} (forsøgte: {', '.join(tried)})")
+
     def visit_OpenFile(self, node: OpenFile):
         fno = int(self.visit(node.file_no))
         fname = str(self.visit(node.filename))
@@ -2547,13 +2601,13 @@ class Interpreter:
             raise InterpreterError(f"Fil nummer {fno} er allerede åben", self.current_line)
         mode_map = {'READ': 'r', 'WRITE': 'w', 'APPEND': 'a', 'RANDOM': 'r+'}
         py_mode = mode_map.get(node.mode.upper(), 'r')
-        if py_mode == 'r+' and not os.path.exists(fname):
-            open(fname, 'w', encoding='utf-8').close()
         try:
-            fhandle = open(fname, py_mode, encoding='utf-8')
-            self.files[fno] = {'handle': fhandle, 'name': fname, 'mode': node.mode.upper()}
-        except Exception as e:
+            fhandle, used_path, moved = self._open_data_file(fname, py_mode)
+        except OSError as e:
             raise InterpreterError(f"Kunne ikke åbne fil '{fname}': {e}", self.current_line, code=62)
+        if moved:
+            self.ui_print(f"** Arbejdsmappen er ikke skrivbar - filen '{fname}' bruges som '{used_path}'\n", '\n')
+        self.files[fno] = {'handle': fhandle, 'name': used_path, 'mode': node.mode.upper()}
 
     def visit_CloseFile(self, node: CloseFile):
         if not node.file_nos:
@@ -2582,10 +2636,14 @@ class Interpreter:
 
     def visit_DelFileStmt(self, node: DelFileStmt):
         fname = str(self.visit(node.filename_expr))
-        if os.path.exists(fname):
-            os.remove(fname)
-        else:
-            raise InterpreterError(f"Filen '{fname}' findes ikke", self.current_line)
+        for path in self._file_candidates(fname):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError as e:
+                    raise InterpreterError(f"Kunne ikke slette filen '{fname}': {e}", self.current_line)
+                return
+        raise InterpreterError(f"Filen '{fname}' findes ikke", self.current_line)
 
     def visit_End(self, node: End):
         raise EndException()
@@ -3071,11 +3129,15 @@ class PiccolineTerminal(QPlainTextEdit):
         mapping = {old_n: start + idx * step for idx, old_n in enumerate(old_nums)}
         new_mem: Dict[int, str] = {}
         new_bps = set()
+        jump_ref = re.compile(r'\b(GOTO|RESTORE)\s+(\d+)\b', re.IGNORECASE)
+
+        def _map_target(match: 're.Match') -> str:
+            target = int(match.group(2))
+            return f"{match.group(1)} {mapping.get(target, target)}"
+
         for old_n in old_nums:
             new_n = mapping[old_n]
-            code = self.program_memory[old_n]
-            for ok, nk in mapping.items():
-                code = re.sub(rf'\b(GOTO|RESTORE)\s+{ok}\b', rf'\1 {nk}', code, flags=re.IGNORECASE)
+            code = jump_ref.sub(_map_target, self.program_memory[old_n])
             new_mem[new_n] = code
             if old_n in self.main_win.breakpoints:
                 new_bps.add(new_n)
@@ -3090,6 +3152,7 @@ class PiccolineTerminal(QPlainTextEdit):
             with open(filename, 'w', encoding='utf-8') as f:
                 for num in sorted(formatted.keys()):
                     f.write(f"{num:04d} {formatted[num]}\n")
+            self.current_path = os.path.abspath(filename)
             self.print_output(f"Gemt som '{filename}'.")
         except Exception as e:
             self.print_output(f"FEJL VED GEM: {e}")
@@ -3113,6 +3176,7 @@ class PiccolineTerminal(QPlainTextEdit):
                     else:
                         self.program_memory[auto_ln] = line
                         auto_ln += 10
+            self.current_path = os.path.abspath(filename)
             self.main_win.refresh_code_view()
             self.print_output(f"Hentet '{filename}' ({len(self.program_memory)} linjer).")
         except Exception as e:
@@ -3204,7 +3268,7 @@ class PiccolineTerminal(QPlainTextEdit):
 class ComalMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RC759 Piccoline - COMAL-80 Fortolker & Avanceret Fejlretter")
+        self.setWindowTitle(f"RC759 Piccoline - COMAL-80 Fortolker v{COMAL80_VERSION} & Avanceret Fejlretter")
         self.resize(1360, 840)
         self.setStyleSheet("""
             QMainWindow, QWidget {
@@ -3590,6 +3654,9 @@ class ComalMainWindow(QMainWindow):
             parser = Parser(tokens)
             ast_root = parser.parse()
 
+            cur_path = getattr(self.terminal, 'current_path', None)
+            base_dir = os.path.dirname(os.path.abspath(cur_path)) if cur_path else None
+
             if immediate and self.immediate_interp is not None:
                 interp = self.immediate_interp
                 interp.ast = ast_root
@@ -3604,7 +3671,8 @@ class ComalMainWindow(QMainWindow):
                     ui_clear=self.terminal.clear,
                     graphics_cb=self.graphics_canvas.handle_command,
                     debug_hook=self._debug_hook,
-                    key_provider=self.terminal.poll_key
+                    key_provider=self.terminal.poll_key,
+                    base_dir=base_dir
                 )
                 if immediate:
                     self.immediate_interp = interp

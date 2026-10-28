@@ -425,155 +425,203 @@
 4250 mixed_str$(2) := "de"
 4260 EXEC assert_str(mixed_str$(1) + mixed_str$(2), "abcde", "DIM mixed_str$(1:3) OF 5 og konkatenation")
 4270 //
-4280 // AFSLUTTENDE TESTRAPPORT
+4280 // SEKTION 29: STRENG-SLICE MED UGYLDIGT INTERVAL (FEJL 44)
 4290 //
-4300 PRINT ""
-4310 PRINT "================================================================"
-4320 PRINT USING "  TESTRAPPORT: ### ud af ### tests bestået (Fejl: ##)": antal_ok%, antal_tests%, antal_fejl%
-4330 IF antal_fejl% = 0 THEN
-4340   PRINT "  STATUS: ALLE COMAL-80 SYNTAKS- OG KERNETESTS BESTÅET 100%!"
-4350 ELSE
-4360   PRINT "  STATUS: DER OPSTOD FEJL UNDER TESTKØRSLEN!"
-4370 ENDIF
-4380 PRINT "================================================================"
-4390 END
-4400 //
-4410 // PROCEDURER OG FUNKTIONER (PROC / FUNC)
-4420 //
-4430 PROC assert_lig(aktuel, forventet, beskrivelse$)
-4440   antal_tests% :+ 1
-4450   IF ABS(aktuel - forventet) < 0.0001 THEN
-4460     antal_ok% :+ 1
-4470     PRINT "  [OK]   "; beskrivelse$; " => "; aktuel
-4480   ELSE
-4490     antal_fejl% :+ 1
-4500     PRINT "  [FEJL] "; beskrivelse$; " (Fik: "; aktuel; ", Forventede: "; forventet; ")"
-4510   ENDIF
-4520 ENDPROC assert_lig
+4300 PRINT "--- [29] Tester streng-slice med ugyldige intervaller ---"
+4310 fanget_rev% := 0
+4320 TRAP
+4330   PRINT fast_str$(5:2)
+4340 HANDLER
+4350   fanget_rev% := ERR
+4360 ENDTRAP
+4370 EXEC assert_lig(fanget_rev%, 44, "Omvendt slice-interval fast_str$(5:2) giver ERR=44")
+4380 fanget_nul% := 0
+4390 TRAP
+4400   PRINT fast_str$(:0)
+4410 HANDLER
+4420   fanget_nul% := ERR
+4430 ENDTRAP
+4440 EXEC assert_lig(fanget_nul%, 44, "Slice med slutposition 0 fast_str$(:0) giver ERR=44")
+4450 fanget_forbi% := 0
+4460 TRAP
+4470   PRINT fast_str$(99:100)
+4480 HANDLER
+4490   fanget_forbi% := ERR
+4500 ENDTRAP
+4510 EXEC assert_lig(fanget_forbi%, 44, "Slice ud over strengens længde fast_str$(99:100) giver ERR=44")
+4520 EXEC assert_str(fast_str$(5:5), "L", "Gyldig slice fast_str$(5:5) virker fortsat")
 4530 //
-4540 PROC assert_str(aktuel$, forventet$, beskrivelse$)
-4550   antal_tests% :+ 1
-4560   IF aktuel$ = forventet$ THEN
-4570     antal_ok% :+ 1
-4580     PRINT "  [OK]   "; beskrivelse$; " => """; aktuel$; """"
-4590   ELSE
-4600     antal_fejl% :+ 1
-4610     PRINT "  [FEJL] "; beskrivelse$; " (Fik: """; aktuel$; """, Forventede: """; forventet$; """)"
-4620   ENDIF
-4630 ENDPROC assert_str
-4640 //
-4650 PROC assert_sand(betingelse%, beskrivelse$)
-4660   EXEC assert_lig(betingelse%, 1, beskrivelse$)
-4670 ENDPROC assert_sand
-4680 //
-4690 PROC test_closed_scope(tillæg) CLOSED
-4700   IMPORT glob_delt
-4710   glob_x := 9999
-4720   glob_delt :+ tillæg
-4730 ENDPROC test_closed_scope
-4740 //
-4750 PROC ombyt_ref(REF a, REF b) CLOSED
-4760   midl := a
-4770   a := b
-4780   b := midl
-4790 ENDPROC ombyt_ref
-4800 //
-4810 FUNC fib(n%) CLOSED
-4820   IF n% <= 1 THEN RETURN 1 - (1 - n%)
-4830   RETURN fib(n% - 1) + fib(n% - 2)
-4840 ENDFUNC fib
-4850 //
-4860 FUNC sfd(a%, b%) CLOSED
-4870   IF b% = 0 THEN RETURN a%
-4880   RETURN sfd(b%, a% MOD b%)
-4890 ENDFUNC sfd
+4540 // SEKTION 30: PRINT USING MED FORTEGNSFELTER
+4550 //
+4560 PRINT "--- [30] Tester PRINT USING med fortegns- og breddefelter ---"
+4570 using_fil$ := "comal_using_test.dat"
+4580 OPEN FILE 4, using_fil$, WRITE
+4590 PRINT FILE 4 USING "[-####.##]": -42.1
+4600 PRINT FILE 4 USING "[+####.##]": 1234.567
+4610 PRINT FILE 4 USING "[####.##]": 1234.567
+4620 PRINT FILE 4 USING "[###]": -4096
+4630 CLOSE FILE 4
+4640 OPEN FILE 4, using_fil$, READ
+4650 READ FILE 4: using_a$
+4660 READ FILE 4: using_b$
+4670 READ FILE 4: using_c$
+4680 READ FILE 4: using_d$
+4690 CLOSE FILE 4
+4700 DEL using_fil$
+4710 EXEC assert_str(using_a$, "[  -42.10]", "PRINT USING '-####.##' højrejusterer -42.1 i 8-tegnsfelt")
+4720 EXEC assert_str(using_b$, "[+1234.57]", "PRINT USING '+####.##' udskriver positivt fortegn")
+4730 EXEC assert_str(using_c$, "[1234.57]", "PRINT USING '####.##' uden fortegnsprefix fylder 7 tegn")
+4740 EXEC assert_str(using_d$, "[***]", "PRINT USING '###' ved overløb giver ***")
+4750 //
+4760 // AFSLUTTENDE TESTRAPPORT
+4770 //
+4780 PRINT ""
+4790 PRINT "================================================================"
+4800 PRINT USING "  TESTRAPPORT: ### ud af ### tests bestået (Fejl: ##)": antal_ok%, antal_tests%, antal_fejl%
+4810 IF antal_fejl% = 0 THEN
+4820   PRINT "  STATUS: ALLE COMAL-80 SYNTAKS- OG KERNETESTS BESTÅET 100%!"
+4830 ELSE
+4840   PRINT "  STATUS: DER OPSTOD FEJL UNDER TESTKØRSLEN!"
+4850 ENDIF
+4860 PRINT "================================================================"
+4870 END
+4880 //
+4890 // PROCEDURER OG FUNKTIONER (PROC / FUNC)
 4900 //
-4910 FUNC romertal$(tal%) CLOSED
-4920   DIM v%(1:7), sym$(1:7) OF 2
-4930   v%(1) := 1000; sym$(1) := "M"
-4940   v%(2) := 900;  sym$(2) := "CM"
-4950   v%(3) := 500;  sym$(3) := "D"
-4960   v%(4) := 100;  sym$(4) := "C"
-4970   v%(5) := 50;   sym$(5) := "L"
-4980   v%(6) := 10;   sym$(6) := "X"
-4990   v%(7) := 4;    sym$(7) := "IV"
-5000   res$ := ""
-5010   rest% := tal%
-5020   FOR i% := 1 TO 7 DO
-5030     WHILE rest% >= v%(i%) DO
-5040       res$ := res$ + TRIM$(sym$(i%))
-5050       rest% :- v%(i%)
-5060     ENDWHILE
-5070   ENDFOR i%
-5080   RETURN res$
-5090 ENDFUNC romertal$
-5100 //
-5110 PROC tegn_master_grafik CLOSED
-5120   EXEC CLEAR
-5130   EXEC PENCOLOR(2)
-5140   EXEC RECT(-180, -130, 180, 130, 0)
-5150   EXEC PENCOLOR(3)
-5160   EXEC CIRCLE(0, 0, 95, 0)
-5170   EXEC HOME
-5180   EXEC PENDOWN
-5190   FOR p% := 1 TO 12 DO
-5200     EXEC PENCOLOR((p% MOD 6) + 1)
-5210     FOR side% := 1 TO 5 DO
-5220       EXEC FORWARD(55)
-5230       EXEC RIGHT(72)
-5240     ENDFOR side%
-5250     EXEC RIGHT(30)
-5260   ENDFOR p%
-5270   EXEC PENUP
-5280   EXEC PENCOLOR(1)
-5290   EXEC TEXT(-165, 110, "RC759 PICCOLINE - MASTERTEST.CPL OK")
-5300   EXEC HOME
-5310 ENDPROC tegn_master_grafik
-5320 //
-5330 PROC byt_to_ref(REF a, REF b) CLOSED
-5340   tmp := a
-5350   a := b
-5360   b := tmp
-5370 ENDPROC byt_to_ref
+4910 PROC assert_lig(aktuel, forventet, beskrivelse$)
+4920   antal_tests% :+ 1
+4930   IF ABS(aktuel - forventet) < 0.0001 THEN
+4940     antal_ok% :+ 1
+4950     PRINT "  [OK]   "; beskrivelse$; " => "; aktuel
+4960   ELSE
+4970     antal_fejl% :+ 1
+4980     PRINT "  [FEJL] "; beskrivelse$; " (Fik: "; aktuel; ", Forventede: "; forventet; ")"
+4990   ENDIF
+5000 ENDPROC assert_lig
+5010 //
+5020 PROC assert_str(aktuel$, forventet$, beskrivelse$)
+5030   antal_tests% :+ 1
+5040   IF aktuel$ = forventet$ THEN
+5050     antal_ok% :+ 1
+5060     PRINT "  [OK]   "; beskrivelse$; " => """; aktuel$; """"
+5070   ELSE
+5080     antal_fejl% :+ 1
+5090     PRINT "  [FEJL] "; beskrivelse$; " (Fik: """; aktuel$; """, Forventede: """; forventet$; """)"
+5100   ENDIF
+5110 ENDPROC assert_str
+5120 //
+5130 PROC assert_sand(betingelse%, beskrivelse$)
+5140   EXEC assert_lig(betingelse%, 1, beskrivelse$)
+5150 ENDPROC assert_sand
+5160 //
+5170 PROC test_closed_scope(tillæg) CLOSED
+5180   IMPORT glob_delt
+5190   glob_x := 9999
+5200   glob_delt :+ tillæg
+5210 ENDPROC test_closed_scope
+5220 //
+5230 PROC ombyt_ref(REF a, REF b) CLOSED
+5240   midl := a
+5250   a := b
+5260   b := midl
+5270 ENDPROC ombyt_ref
+5280 //
+5290 FUNC fib(n%) CLOSED
+5300   IF n% <= 1 THEN RETURN 1 - (1 - n%)
+5310   RETURN fib(n% - 1) + fib(n% - 2)
+5320 ENDFUNC fib
+5330 //
+5340 FUNC sfd(a%, b%) CLOSED
+5350   IF b% = 0 THEN RETURN a%
+5360   RETURN sfd(b%, a% MOD b%)
+5370 ENDFUNC sfd
 5380 //
-5390 PROC increment_ref(REF x) CLOSED
-5400   x := x + 1
-5410 ENDPROC increment_ref
-5420 //
-5430 PROC set_ref_abs(REF x, ny_val) CLOSED
-5440   x := ny_val
-5450 ENDPROC set_ref_abs
-5460 //
-5470 PROC ombyt_ref_aaben(REF a, REF b)
-5480   tmp := a
-5490   a := b
-5500   b := tmp
-5510 ENDPROC ombyt_ref_aaben
-5520 //
-5530 PROC test_scope_precedens CLOSED
-5540   prec_global := 9999
-5550 ENDPROC test_scope_precedens
-5560 //
-5570 PROC test_import_scope CLOSED
-5580   IMPORT prec_import
-5590   prec_import :+ 25
-5600 ENDPROC test_import_scope
-5610 //
-5620 PROC test_closed_array CLOSED
-5630   DIM lokal_arr(1:5)
-5640   lokal_arr(1) := 42
-5650   lokal_arr(5) := 99
-5660   global_test_arr_sum := lokal_arr(1) + lokal_arr(5)
-5670 ENDPROC test_closed_array
-5680 //
-5690 PROC test_closed_dim_of CLOSED
-5700   DIM lokal_str$ OF 10
-5710   lokal_str$ := "test"
-5720   global_test_str$ := lokal_str$
-5730 ENDPROC test_closed_dim_of
-5740 //
-5750 PROC rekursiv_sum(fra%, til%, REF akk) CLOSED
-5760   IF fra% > til% THEN RETURN
-5770   akk := akk + fra%
-5780   EXEC rekursiv_sum(fra% + 1, til%, akk)
-5790 ENDPROC rekursiv_sum
+5390 FUNC romertal$(tal%) CLOSED
+5400   DIM v%(1:7), sym$(1:7) OF 2
+5410   v%(1) := 1000; sym$(1) := "M"
+5420   v%(2) := 900;  sym$(2) := "CM"
+5430   v%(3) := 500;  sym$(3) := "D"
+5440   v%(4) := 100;  sym$(4) := "C"
+5450   v%(5) := 50;   sym$(5) := "L"
+5460   v%(6) := 10;   sym$(6) := "X"
+5470   v%(7) := 4;    sym$(7) := "IV"
+5480   res$ := ""
+5490   rest% := tal%
+5500   FOR i% := 1 TO 7 DO
+5510     WHILE rest% >= v%(i%) DO
+5520       res$ := res$ + TRIM$(sym$(i%))
+5530       rest% :- v%(i%)
+5540     ENDWHILE
+5550   ENDFOR i%
+5560   RETURN res$
+5570 ENDFUNC romertal$
+5580 //
+5590 PROC tegn_master_grafik CLOSED
+5600   EXEC CLEAR
+5610   EXEC PENCOLOR(2)
+5620   EXEC RECT(-180, -130, 180, 130, 0)
+5630   EXEC PENCOLOR(3)
+5640   EXEC CIRCLE(0, 0, 95, 0)
+5650   EXEC HOME
+5660   EXEC PENDOWN
+5670   FOR p% := 1 TO 12 DO
+5680     EXEC PENCOLOR((p% MOD 6) + 1)
+5690     FOR side% := 1 TO 5 DO
+5700       EXEC FORWARD(55)
+5710       EXEC RIGHT(72)
+5720     ENDFOR side%
+5730     EXEC RIGHT(30)
+5740   ENDFOR p%
+5750   EXEC PENUP
+5760   EXEC PENCOLOR(1)
+5770   EXEC TEXT(-165, 110, "RC759 PICCOLINE - MASTERTEST.CPL OK")
+5780   EXEC HOME
+5790 ENDPROC tegn_master_grafik
+5800 //
+5810 PROC byt_to_ref(REF a, REF b) CLOSED
+5820   tmp := a
+5830   a := b
+5840   b := tmp
+5850 ENDPROC byt_to_ref
+5860 //
+5870 PROC increment_ref(REF x) CLOSED
+5880   x := x + 1
+5890 ENDPROC increment_ref
+5900 //
+5910 PROC set_ref_abs(REF x, ny_val) CLOSED
+5920   x := ny_val
+5930 ENDPROC set_ref_abs
+5940 //
+5950 PROC ombyt_ref_aaben(REF a, REF b)
+5960   tmp := a
+5970   a := b
+5980   b := tmp
+5990 ENDPROC ombyt_ref_aaben
+6000 //
+6010 PROC test_scope_precedens CLOSED
+6020   prec_global := 9999
+6030 ENDPROC test_scope_precedens
+6040 //
+6050 PROC test_import_scope CLOSED
+6060   IMPORT prec_import
+6070   prec_import :+ 25
+6080 ENDPROC test_import_scope
+6090 //
+6100 PROC test_closed_array CLOSED
+6110   DIM lokal_arr(1:5)
+6120   lokal_arr(1) := 42
+6130   lokal_arr(5) := 99
+6140   global_test_arr_sum := lokal_arr(1) + lokal_arr(5)
+6150 ENDPROC test_closed_array
+6160 //
+6170 PROC test_closed_dim_of CLOSED
+6180   DIM lokal_str$ OF 10
+6190   lokal_str$ := "test"
+6200   global_test_str$ := lokal_str$
+6210 ENDPROC test_closed_dim_of
+6220 //
+6230 PROC rekursiv_sum(fra%, til%, REF akk) CLOSED
+6240   IF fra% > til% THEN RETURN
+6250   akk := akk + fra%
+6260   EXEC rekursiv_sum(fra% + 1, til%, akk)
+6270 ENDPROC rekursiv_sum
