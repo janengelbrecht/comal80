@@ -168,6 +168,8 @@ Kodestykke
 
 MIT License
 
+EMulator online: http://www.jbox.dk/rc702/rc700.shtm
+
 Copyright (c) 2026 Jan Engelbrecht Pedersen
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
