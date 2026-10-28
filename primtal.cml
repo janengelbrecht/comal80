@@ -1,0 +1,13 @@
+10 PAGE
+20 REM *** PRIMTALSFINDER ***
+30 PRINT "Beregner primtal op til 50:"
+40 FOR N = 2 TO 50 DO
+50   ER_PRIM = 1
+60   FOR I = 2 TO N DIV 2 DO
+70     IF N MOD I = 0 THEN ER_PRIM := 0
+80   ENDFOR
+90   IF ER_PRIM = 1 THEN PRINT N; " ";
+100 ENDFOR
+110 PRINT ""
+120 PRINT "Beregning faerdig."
+130 STOP
