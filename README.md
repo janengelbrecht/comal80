@@ -168,7 +168,7 @@ Kodestykke
 
 MIT License
 
-EMulator online: http://www.jbox.dk/rc702/rc700.shtm
+Emulatorer online: http://www.jbox.dk/rc702/rc700.shtm og http://retroweb.maclab.org/articles/RC759-Piccoline.html
 
 Copyright (c) 2026 Jan Engelbrecht Pedersen
 
