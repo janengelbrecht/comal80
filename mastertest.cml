@@ -1,59 +1,579 @@
-10 PAGE
-20 PRINT "==========================================="
-30 PRINT "      COMAL-80 MASTER SYSTEM TEST"
-40 PRINT "==========================================="
-50 PRINT ""
-60 
-70 REM --- 1. VARIABLER, ARRAYS OG TILDELING ---
-80 PRINT "1. TESTER VARIABLER OG ARRAYS..."
-90 TEKST$ := "Dansk COMAL"
-100 HELTAL% = 42
-110 KOMMA = 3.1415
-120 // Tester flerdimensionelle arrays og string-arrays
-130 BORD$(1, 1) = "Konge"
-140 BORD$(2, 2) := "Bonde"
-150 MATRIX%(10) = 99
-160 PRINT "   Basis: ", TEKST$, HELTAL%, KOMMA
-170 PRINT "   Array: ", BORD$(1,1); " og "; BORD$(2,2), MATRIX%(10)
-180 PRINT ""
-190 
-200 REM --- 2. MATEMATIK OG OPERATORER ---
-210 PRINT "2. TESTER MATEMATIK OG LOGIK..."
-220 PRINT "   Normal math (5+2*3) = ", 5 + 2 * 3
-230 PRINT "   Potens      (2^8)   = ", 2 ^ 8
-240 PRINT "   Modulo      (17 MOD 5) = ", 17 MOD 5
-250 PRINT "   Heltalsdiv  (17 DIV 5) = ", 17 DIV 5
-260 IF (10 > 5) AND (5 <> 4) THEN PRINT "   Logik (AND/<>) virker!"
-270 IF NOT (1 = 0) OR (0 = 1) THEN PRINT "   Logik (NOT/OR) virker!"
-280 PRINT ""
-290 
-300 REM --- 3. LOOPS OG KONTROLSTRUKTURER ---
-310 PRINT "3. TESTER LOOPS..."
-320 PRINT "   FOR-loop (baglaens): ";
-330 FOR I% = 9 TO 3 STEP -3 DO
-340   PRINT I%; " ";
-350 ENDFOR
-360 PRINT ""
-370 
-380 PRINT "   WHILE-loop: ";
-390 W% = 0
-400 WHILE W% < 2 DO
-410   PRINT W%; " ";
-420   W% = W% + 1
-430 ENDWHILE
-440 PRINT ""
-450 
-460 PRINT "   REPEAT-loop: ";
-470 R% = 0
-480 REPEAT
-490   R% = R% + 1
-500 UNTIL R% = 2
-510 PRINT "Korte ", R%; " gange."
-520 PRINT ""
-530 
-540 REM --- 4. DATA, READ OG RESTORE ---
-550 PRINT "4. TESTER DATA OG LÆSNING..."
-560 READ D1$, D2%
-570 PRINT "   Forste laesning: ", D1$, D2%
-580 RESTORE
-590 READ
+0010 // ====================================================================
+0020 // MASTERTEST.CPL - KOMPLET VERIFIKATION AF COMAL-80 FORTOLKER (v2)
+0030 // Tester samtlige sprogkonstruktioner, datatyper, funktioner,
+0040 // streng-slicing, CLOSED/REF/IMPORT, filer, TRAP og RC759-grafik.
+0050 // UDVIDET med Immediate Mode, REF-scope, edge cases og nye regressions-
+0060 // tests for de konstaterede fejl (Immediate Mode + REF i CLOSED frame).
+0070 // ====================================================================
+0080 REM Klassisk REM-kommentar samt !-kommentar understøttes også
+0090 PAGE
+0100 ZONE 14
+0110 RANDOMIZE 42
+0120 TRAP ESC+
+0130 NULL
+0140 antal_tests% := 0
+0150 antal_ok% := 0
+0160 antal_fejl% := 0
+0170 PRINT "================================================================"
+0180 PRINT "   RC759 PICCOLINE COMAL-80 - MASTERTEST.CPL v2 STARTET"
+0190 PRINT "================================================================"
+0200 //
+0210 // SEKTION 1: BASISVARIABLER, TALFORMATER, OPERATORER & TILDELINGER
+0220 //
+0230 PRINT ""
+0240 PRINT "--- [1] Tester datatyper, hex, eksponent og operatorer ---"
+0250 heltal% := 25
+0260 heltal% :+ 15
+0270 heltal% :- 5
+0280 EXEC assert_lig(heltal%, 35, "Sammensat tildeling :+ og :-")
+0290 hex_tal% := $FF
+0300 EXEC assert_lig(hex_tal%, 255, "Hexadecimalt literal $FF")
+0310 exp_tal := 1.25E2 + 2.5e-1
+0320 EXEC assert_lig(exp_tal, 125.25, "Eksponentiel notation 1.25E2 + 2.5e-1")
+0330 div_res% := 29 DIV 5
+0340 mod_res% := 29 MOD 5
+0350 pot_res := 2 ^ 3 ^ 2
+0360 EXEC assert_lig(div_res%, 5, "Heltalsdivision DIV (29 DIV 5)")
+0370 EXEC assert_lig(mod_res%, 4, "Modulo MOD (29 MOD 5)")
+0380 EXEC assert_lig(pot_res, 512, "Højre-associativ potens (2^3^2 = 512)")
+0390 logisk% := (5 < 10 AND 10 <> 5) AND (NOT (3 = 4)) AND (1 EOR 0)
+0400 EXEC assert_lig(logisk%, 1, "Logiske operatorer AND, OR, EOR, NOT")
+0410 //
+0420 // SEKTION 2: STRENGE, DIM OF, 1-BASERET SLICING & IN-OPERATOR
+0430 //
+0440 PRINT "--- [2] Tester streng-slicing, delstrengstildeling og IN ---"
+0450 DIM fast_str$ OF 12
+0460 fast_str$ := "COMAL-75 PRO"
+0470 fast_str$(7:8) := "80"
+0480 EXEC assert_str(fast_str$, "COMAL-80 PRO", "Delstrengstildeling s$(7:8) := 80")
+0490 EXEC assert_str(fast_str$(1:5), "COMAL", "Streng-slice læsning s$(1:5)")
+0500 EXEC assert_str(fast_str$(:5), "COMAL", "Streng-slice udeladt start s$(:5)")
+0510 EXEC assert_str(fast_str$(10:), "PRO", "Streng-slice udeladt slut s$(10:)")
+0520 EXEC assert_str(fast_str$(6), "-", "Enkelttegns-opslag s$(6)")
+0530 pos_in% := "80" IN fast_str$
+0540 EXEC assert_lig(pos_in%, 7, "Delstrengsoperator IN (80 IN COMAL-80 PRO)")
+0550 citat$ := "Han sagde ""COMAL""!"
+0560 EXEC assert_lig(LEN(citat$), 18, "Escapede anførselstegn i streng")
+0570 //
+0580 // SEKTION 3: TABELLER (DIM) MED NEGATIVE GRÆNSER & STRENGTABELLER
+0590 //
+0600 PRINT "--- [3] Tester flerdimensionelle DIM-tabeller og grænser ---"
+0610 DIM vektor(-3:3), matrix(1:2, 1..3), byer$(1:3) OF 10
+0620 FOR i% := -3 TO 3 STEP 1 DO vektor(i%) := i% * i%
+0630 EXEC assert_lig(vektor(-3) + vektor(2), 13, "1D-tabel med negative grænser (-3:3)")
+0640 matrix(2, 3) := 42.5
+0650 matrix(2, 3) :+ 7.5
+0660 EXEC assert_lig(matrix(2, 3), 50, "2D-tabel opslag og :+ opdatering")
+0670 byer$(1) := "Aarhus"
+0680 byer$(2) := "Odense"
+0690 byer$(1)(1:2) := "År"
+0700 EXEC assert_str(byer$(1), "Årrhus", "Tabel-element streng-slice tildeling byer$(1)(1:2)")
+0710 EXEC assert_str(byer$(2)(1:4), "Oden", "Tabel-element streng-slice læsning byer$(2)(1:4)")
+0720 //
+0730 // SEKTION 4: KONTROLSTRUKTURER (IF, CASE, FOR, WHILE, REPEAT, LOOP)
+0740 //
+0750 PRINT "--- [4] Tester alle løkke- og forgreningsstrukturer ---"
+0760 test_v% := 15
+0770 IF test_v% < 10 THEN
+0780   gren$ := "LAV"
+0790 ELIF test_v% = 15 THEN
+0800   gren$ := "PRÆCIS 15"
+0810 ELSE
+0820   gren$ := "HØJ"
+0830 ENDIF
+0840 EXEC assert_str(gren$, "PRÆCIS 15", "Flerlinje IF / ELIF / ELSE / ENDIF")
+0850 IF 2 + 2 = 4 THEN kort$ := "JA" ELSE kort$ := "NEJ"
+0860 EXEC assert_str(kort$, "JA", "Enkeltrække IF ... THEN ... ELSE")
+0870 karakter_tekst$ := ""
+0880 FOR score% := -5 TO 95 STEP 25 DO
+0890   CASE score% OF
+0900   WHEN < 0
+0910     karakter_tekst$ := karakter_tekst$ + "U"
+0920   WHEN 0, 20
+0930     karakter_tekst$ := karakter_tekst$ + "D"
+0940   WHEN 21..75
+0950     karakter_tekst$ := karakter_tekst$ + "M"
+0960   OTHERWISE
+0970     karakter_tekst$ := karakter_tekst$ + "T"
+0980   ENDCASE
+0990 ENDFOR score%
+1000 EXEC assert_str(karakter_tekst$, "UDMMT", "CASE OF (WHEN <0, liste, interval .., OTHERWISE)")
+1010 ned_sum% := 0
+1020 FOR k% := 10 TO 2 STEP -2 DO ned_sum% :+ k%
+1030 EXEC assert_lig(ned_sum%, 30, "FOR-løkke med negativt STEP (-2)")
+1040 w_cnt% := 1
+1050 WHILE w_cnt% < 32 DO w_cnt% := w_cnt% * 2
+1060 EXEC assert_lig(w_cnt%, 32, "WHILE ... DO løkke")
+1070 r_cnt% := 0
+1080 REPEAT
+1090   r_cnt% :+ 3
+1100 UNTIL r_cnt% >= 12
+1110 EXEC assert_lig(r_cnt%, 12, "REPEAT ... UNTIL løkke")
+1120 l_sum% := 0
+1130 l_idx% := 0
+1140 LOOP
+1150   l_idx% :+ 1
+1160   l_sum% :+ l_idx%
+1170   EXIT WHEN l_idx% = 10
+1180 ENDLOOP
+1190 EXEC assert_lig(l_sum%, 55, "LOOP ... EXIT WHEN ... ENDLOOP (1..10 = 55)")
+1200 goto_ok% := 0
+1210 GOTO spring_over
+1220 goto_ok% := 999
+1230 spring_over:
+1240 goto_ok% :+ 1
+1250 EXEC assert_lig(goto_ok%, 1, "GOTO og navngiven label (spring_over:)")
+1260 //
+1270 // SEKTION 5: PROC, FUNC, CLOSED, IMPORT, REF & REKURSION
+1280 //
+1290 PRINT "--- [5] Tester PROC/FUNC, CLOSED scope, REF og IMPORT ---"
+1300 glob_x := 100
+1310 glob_delt := 50
+1320 EXEC test_closed_scope(25)
+1330 EXEC assert_lig(glob_x, 100, "CLOSED procedure isolerer lokale variabler (glob_x uændret)")
+1340 EXEC assert_lig(glob_delt, 75, "IMPORT i CLOSED procedure opdaterer global variabel")
+1350 p1 := 14
+1360 p2 := 99
+1370 EXEC ombyt_ref(p1, p2)
+1380 EXEC assert_lig(p1 * 100 + p2, 9914, "REF-parametre ombytter variabler (p1=99, p2=14)")
+1390 EXEC ombyt_ref(vektor(-3), vektor(0))
+1400 EXEC assert_lig(vektor(0), 9, "REF-parameter bundet direkte til tabelelement vektor(i)")
+1410 EXEC assert_lig(fib(10), 55, "Rekursiv FUNC CLOSED: Fibonacci(10) = 55")
+1420 EXEC assert_lig(sfd(1071, 462), 21, "Rekursiv Euklids algoritme FUNC sfd(1071, 462) = 21")
+1430 EXEC assert_str(romertal$(1984), "MCMLXXXIV", "Streng-funktion FUNC romertal$(1984)")
+1440 //
+1450 // SEKTION 6: DATA, READ, RESTORE <LABEL> & EOD
+1460 //
+1470 PRINT "--- [6] Tester DATA, READ, RESTORE <label> og EOD ---"
+1480 data_start:
+1490 DATA 10, -20.5, "Piccoline"
+1500 extra_data:
+1510 DATA 300, "RC759"
+1520 READ d_a, d_b, d_navn$
+1530 EXEC assert_lig(d_a + d_b, -10.5, "READ af positive og negative tal fra DATA")
+1540 EXEC assert_str(d_navn$, "Piccoline", "READ af streng fra DATA")
+1550 EXEC assert_lig(EOD, 0, "EOD er 0 før slut på DATA")
+1560 READ d_c, d_model$
+1570 EXEC assert_lig(d_c + LEN(d_model$), 305, "READ af sidste DATA-par (300+5=305)")
+1580 RESTORE extra_data
+1590 READ d_igen, d_model2$
+1600 EXEC assert_lig(d_igen, 300, "RESTORE <label> spoler præcist til extra_data")
+1610 RESTORE
+1620 READ d_forfra
+1630 EXEC assert_lig(d_forfra, 10, "RESTORE uden argument spoler til start")
+1640 //
+1650 // SEKTION 7: INDBYGGEDE MATEMATISKE & STRENG-FUNKTIONER
+1660 //
+1670 PRINT "--- [7] Tester indbyggede matematik- og strengfunktioner ---"
+1680 trig_val := ROUND(SIN(RAD(30)) + COS(RAD(60)), 4)
+1690 EXEC assert_lig(trig_val, 1, "SIN(RAD(30)) + COS(RAD(60)) = 1.0")
+1700 vinkel_deg := ROUND(DEG(ATN(1)), 2)
+1710 EXEC assert_lig(vinkel_deg, 45, "DEG(ATN(1)) = 45 grader")
+1720 math_ok% := (SQR(144) = 12) AND (ABS(-19) = 19) AND (INT(7.9) = 7) AND (SGN(-5) = -1)
+1730 EXEC assert_lig(math_ok%, 1, "SQR, ABS, INT og SGN")
+1740 log_ok := ROUND(LN(EXP(3)) + LOG(1000), 4)
+1750 EXEC assert_lig(log_ok, 6, "LN(EXP(3)) + LOG(1000) = 6")
+1760 str_f$ := UPPER$("  comal-80  ")
+1770 EXEC assert_str(TRIM$(str_f$), "COMAL-80", "UPPER$() og TRIM$()")
+1780 EXEC assert_str(LOWER$("RC759"), "rc759", "LOWER$()")
+1790 EXEC assert_lig(ORD(CHR$(65)), 65, "CHR$(65) og ORD()")
+1800 EXEC assert_lig(VAL(STR$(123.45)) * 2, 246.9, "STR$() og VAL()")
+1810 EXEC assert_lig(INSTR("Regnecentralen", "central"), 6, "INSTR() delstrengssøgning")
+1820 PRINT USING "  Formateret PRINT USING test: +####.## og ###.#": 1234.567, -42.1
+1830 //
+1840 // SEKTION 8: STRUKTURERET FEJLHÅNDTERING (TRAP / HANDLER / ENDTRAP)
+1850 //
+1860 PRINT "--- [8] Tester TRAP / HANDLER / ENDTRAP og ERR-variabler ---"
+1870 fanget_div0% := 0
+1880 TRAP
+1890   umulig := 100 / 0
+1900 HANDLER
+1910   fanget_div0% := ERR
+1920   fejl_linje% := ERRLINE
+1930   fejl_besked$ := ERRTEXT$
+1940 ENDTRAP
+1950 EXEC assert_lig(fanget_div0%, 51, "TRAP fangede division med nul (ERR = 51)")
+1960 EXEC assert_sand(LEN(fejl_besked$) > 5, "ERRTEXT$ indeholder fejlbeskrivelse")
+1970 fanget_bounds% := 0
+1980 TRAP
+1990   vektor(99) := 1
+2000 HANDLER
+2010   fanget_bounds% := ERR
+2020 ENDTRAP
+2030 EXEC assert_lig(fanget_bounds%, 42, "TRAP fangede indeks uden for DIM-grænser (ERR = 42)")
+2040 fanget_strof% := 0
+2050 TRAP
+2060   fast_str$ := "DENNE STRENG ER ALT FOR LANG TIL OF 12"
+2070 HANDLER
+2080   fanget_strof% := ERR
+2090 ENDTRAP
+2100 EXEC assert_lig(fanget_strof%, 43, "TRAP fangede DIM OF strenglængde-overflow (ERR = 43)")
+2110 //
+2120 // SEKTION 9: FILHÅNDTERING (OPEN, WRITE, READ, PRINT, INPUT, EOF, DEL)
+2130 //
+2140 PRINT "--- [9] Tester sekventielle data- og tekstfiler ---"
+2150 testfil$ := "comal_master_test.dat"
+2160 OPEN FILE 1, testfil$, WRITE
+2170 WRITE FILE 1: "RC759", 1984, 3.14
+2180 WRITE FILE 1: "COMAL-80", 2026, 2.718
+2190 CLOSE FILE 1
+2200 OPEN FILE 1, testfil$, READ
+2210 EXEC assert_lig(EOF(1), 0, "EOF(1) er 0 ved starten af åben fil")
+2220 READ FILE 1: f_navn1$, f_aar1%, f_tal1
+2230 READ FILE 1: f_navn2$, f_aar2%, f_tal2
+2240 EXEC assert_str(f_navn1$ + "-" + f_navn2$, "RC759-COMAL-80", "WRITE FILE og READ FILE strenge")
+2250 EXEC assert_lig(f_aar1% + f_aar2%, 4010, "WRITE FILE og READ FILE heltal (1984+2026)")
+2260 EXEC assert_lig(EOF(1), 1, "EOF(1) er 1 ved slutningen af filen")
+2270 CLOSE FILE 1
+2280 DEL testfil$
+2290 //
+2300 // SEKTION 10: RC759 GSX- OG TURTLE-GRAFIK
+2310 //
+2320 PRINT "--- [10] Tegner verifikationsgrafik på RC759 Grafikskærm ---"
+2330 EXEC tegn_master_grafik
+2340 EXEC assert_sand(TIME >= 0, "Systemur TIME returnerer gyldig køretid")
+2350 //
+2360 // SEKTION 11: VARIABEL-PERSISTENS PÅ TVÆRS AF UDTALELSER (SCOPE)
+2370 //
+2380 PRINT "--- [11] Tester variabel-persistens og scope-præcedens ---"
+2390 scope_a% := 42
+2400 scope_a% :+ 8
+2410 EXEC assert_lig(scope_a%, 50, "Global variabel bevares mellem sætninger (42+8=50)")
+2420 scope_b := 3.14
+2430 scope_b := scope_b * 2
+2440 EXEC assert_lig(ROUND(scope_b, 2), 6.28, "Global REAL bevares og opdateres (3.14*2)")
+2450 scope_s$ := "Hej"
+2460 scope_s$ := scope_s$ + " verden"
+2470 EXEC assert_str(scope_s$, "Hej verden", "Global STRING bevares og opdateres")
+2480 //
+2490 // SEKTION 12: REF I CLOSED FRAME (Bug B — må ikke skygge for global)
+2500 //
+2510 PRINT "--- [12] Tester REF-bindinger i CLOSED frames ---"
+2520 rx := 10
+2530 ry := 20
+2540 EXEC byt_to_ref(rx, ry)
+2550 EXEC assert_lig(rx * 100 + ry, 2010, "CLOSED PROC REF bytter globale rx, ry korrekt")
+2560 rz := 5
+2570 EXEC increment_ref(rz)
+2580 EXEC assert_lig(rz, 6, "CLOSED PROC REF incrementerer global rz (5→6)")
+2590 rw := 100
+2600 EXEC set_ref_abs(rw, 42)
+2610 EXEC assert_lig(rw, 42, "CLOSED PROC REF sætter global rw til 42")
+2620 //
+2630 // SEKTION 13: REF I ÅBEN (IKKE-CLOSED) PROC
+2640 //
+2650 PRINT "--- [13] Tester REF-bindinger i åbne PROC'er ---"
+2660 open_a := 7
+2670 open_b := 13
+2680 EXEC ombyt_ref_aaben(open_a, open_b)
+2690 EXEC assert_lig(open_a * 100 + open_b, 1307, "ÅBEN PROC REF bytter variabler korrekt")
+2700 //
+2710 // SEKTION 14: SCOPE-PRÆCEDENS (LOKAL vs GLOBAL vs REF vs IMPORT)
+2720 //
+2730 PRINT "--- [14] Tester scope-præcedens i CLOSED frames ---"
+2740 prec_global := 100
+2750 EXEC test_scope_precedens
+2760 EXEC assert_lig(prec_global, 100, "CLOSED PROC rører ikke global variabel uden IMPORT")
+2770 prec_import := 50
+2780 EXEC test_import_scope
+2790 EXEC assert_lig(prec_import, 75, "IMPORT i CLOSED PROC opdaterer global korrekt")
+2800 //
+2810 // SEKTION 15: STRENG-SLICE PÅ TABEL-ELEMENTER (EDGE CASES)
+2820 //
+2830 PRINT "--- [15] Tester streng-slice edge cases på tabel-elementer ---"
+2840 DIM slicetab$(1:5) OF 8
+2850 slicetab$(1) := "ABCDEFGH"
+2860 slicetab$(1)(1:3) := "XYZ"
+2870 EXEC assert_str(slicetab$(1), "XYZDEFGH", "Slice 1:3 på 8-tegns element (ABCDEFGH→XYZDEFGH)")
+2880 slicetab$(2) := "12345"
+2890 slicetab$(2)(2:4) := "abc"
+2900 EXEC assert_str(slicetab$(2), "1abc5", "Slice 2:4 på 5-tegns element (12345→1abc5)")
+2910 slicetab$(3) := "KORT"
+2920 slicetab$(3)(1:4) := "LANGT"
+2930 EXEC assert_str(slicetab$(3), "LANG", "Slice 1:4 på 4-tegns element trunkeres (KORT→LANG)")
+2940 //
+2950 // SEKTION 16: STRENG-SLICE EDGE CASES (UDEN FOR GRÆNSER)
+2960 //
+2970 PRINT "--- [16] Tester streng-slice grænsetilfælde ---"
+2980 DIM edgestr$ OF 20
+2990 edgestr$ := "KORT"
+3000 edgestr$(1:1) := "L"
+3010 EXEC assert_str(edgestr$, "LORT", "Slice 1:1 på 4-tegns streng")
+3020 fanget_slice% := 0
+3030 TRAP
+3040   edgestr$(5:10) := "XXXX"
+3050 HANDLER
+3060   fanget_slice% := ERR
+3070 ENDTRAP
+3080 EXEC assert_lig(fanget_slice%, 44, "Slice uden for grænser giver ERR=44")
+3090 //
+3100 // SEKTION 17: CLOSED FRAME MED LOKALE ARRAYS OG DIM OF
+3110 //
+3120 PRINT "--- [17] Tester CLOSED frame isolation med arrays ---"
+3130 global_test_arr_sum := 0
+3140 global_test_str$ := ""
+3150 EXEC test_closed_array
+3160 EXEC assert_lig(global_test_arr_sum, 0, "CLOSED PROC's lokale DIM-array lækker ikke til global")
+3170 EXEC test_closed_dim_of
+3180 EXEC assert_lig(LEN(global_test_str$), 0, "CLOSED PROC's DIM OF lækker ikke til global")
+3190 //
+3200 // SEKTION 18: REKURSION + REF KOMBINERET
+3210 //
+3220 PRINT "--- [18] Tester rekursion kombineret med REF ---"
+3230 rek_sum := 0
+3240 EXEC rekursiv_sum(1, 5, rek_sum)
+3250 EXEC assert_lig(rek_sum, 15, "Rekursiv PROC med REF akkumulator (1+2+3+4+5=15)")
+3260 //
+3270 // SEKTION 19: SEMIKOLON-SEPAREREDE SÆTNINGER
+3280 //
+3290 PRINT "--- [19] Tester semikolon-separerede sætninger ---"
+3300 semi_a := 1; semi_b := 2; semi_c := 3
+3310 EXEC assert_lig(semi_a + semi_b + semi_c, 6, "Semikolon-separerede tildelinger (1+2+3=6)")
+3320 semi_x := 10; semi_x :+ 5
+3330 semi_x := semi_x * 2
+3340 EXEC assert_lig(semi_x, 30, "Semikolon-separeret :+ og efterfølgende * ((10+5)*2=30)")
+3350 //
+3360 // SEKTION 20: TALFORMAT VIA STR$ OG VAL
+3370 //
+3380 PRINT "--- [20] Tester talformat via STR$ og VAL ---"
+3390 fmt_num := 1234.5
+3400 fmt_str$ := STR$(fmt_num)
+3410 EXEC assert_str(fmt_str$, "1234.5", "STR$(1234.5) = '1234.5'")
+3420 fmt_back := VAL("1234.5")
+3430 EXEC assert_lig(fmt_back, 1234.5, "VAL('1234.5') = 1234.5")
+3440 //
+3450 // SEKTION 21: TRAP/HANDLER NESTING OG ERR-VARIABLER
+3460 //
+3470 PRINT "--- [21] Tester TRAP/HANDLER nesting og ERR-variabler ---"
+3480 outer_err% := 0
+3490 inner_err% := 0
+3500 TRAP
+3510   TRAP
+3520     inner_err% := 1 / 0
+3530   HANDLER
+3540     inner_err% := ERR
+3550   ENDTRAP
+3560   outer_err% := 99
+3570 HANDLER
+3580   outer_err% := ERR
+3590 ENDTRAP
+3600 EXEC assert_lig(inner_err%, 51, "Indre TRAP fanger 1/0 (ERR=51)")
+3610 EXEC assert_lig(outer_err%, 99, "Ydre TRAP kører uforstyrret efter indre handler")
+3620 //
+3630 // SEKTION 22: DATA/READ EDGE CASES
+3640 //
+3650 PRINT "--- [22] Tester DATA/READ edge cases ---"
+3660 edge_data:
+3670 DATA 10, 20, 30
+3680 RESTORE edge_data
+3690 READ ed1%, ed2%, ed3%
+3700 EXEC assert_lig(ed1% + ed2% + ed3%, 60, "RESTORE <label> og READ 3 værdier (10+20+30=60)")
+3710 //
+3720 // SEKTION 23: DIV/MOD MED NEGATIVE TAL
+3730 //
+3740 PRINT "--- [23] Tester DIV og MOD med negative tal ---"
+3750 EXEC assert_lig(-7 DIV 2, -4, "-7 DIV 2 = -4 (gulvdivision)")
+3760 EXEC assert_lig(-7 MOD 2, 1, "-7 MOD 2 = 1 (Python-modulo-semantik)")
+3770 EXEC assert_lig(7 DIV -2, -4, "7 DIV -2 = -4 (gulvdivision)")
+3780 //
+3790 // SEKTION 24: IN-OPERATOR EDGE CASES
+3800 //
+3810 PRINT "--- [24] Tester IN-operator edge cases ---"
+3820 EXEC assert_lig("" IN "abc", 1, "Tom streng IN 'abc' = 1 (findes ved position 1)")
+3830 EXEC assert_lig("z" IN "abc", 0, "Ikke-fundet tegn IN 'abc' = 0")
+3840 EXEC assert_lig("abc" IN "abc", 1, "Fuld match IN 'abc' = 1")
+3850 EXEC assert_lig("bc" IN "abc", 2, "Delstreng IN 'abc' = 2")
+3860 //
+3870 // SEKTION 25: COERCION (NUMERISK vs STRENG)
+3880 //
+3890 PRINT "--- [25] Tester type-coercion ved tildeling ---"
+3900 DIM coerce_i% 
+3910 coerce_i% := 42
+3920 EXEC assert_lig(coerce_i%, 42, "INTEGER-tildeling 42 = 42")
+3930 coerce_f := 3.14
+3940 EXEC assert_lig(ROUND(coerce_f, 2), 3.14, "REAL-tildeling 3.14 = 3.14")
+3950 coerce_s$ := "abc"
+3960 EXEC assert_str(coerce_s$, "abc", "STRING-tildeling 'abc' = 'abc'")
+3970 //
+3980 // SEKTION 26: LEN/TRIM/UPPER/LOWER MED SPECIALTEGN (ÆØÅ)
+3990 //
+4000 PRINT "--- [26] Tester strengfunktioner med æøå ---"
+4010 special$ := "  Ærøskøbing  "
+4020 EXEC assert_lig(LEN(TRIM$(special$)), 10, "LEN(TRIM$('  Ærøskøbing  ')) = 10")
+4030 EXEC assert_str(UPPER$("æøå"), "ÆØÅ", "UPPER$('æøå') = 'ÆØÅ'")
+4040 EXEC assert_str(LOWER$("ÆØÅ"), "æøå", "LOWER$('ÆØÅ') = 'æøå'")
+4050 //
+4060 // SEKTION 27: STR$/VAL ROUND-TRIP
+4070 //
+4080 PRINT "--- [27] Tester STR$/VAL round-trip ---"
+4090 rt_num := 123.45
+4100 rt_back := VAL(STR$(rt_num))
+4110 EXEC assert_lig(ROUND(rt_back, 2), 123.45, "VAL(STR$(123.45)) = 123.45")
+4120 rt_int% := 42
+4130 rt_back_i% := VAL(STR$(rt_int%))
+4140 EXEC assert_lig(rt_back_i%, 42, "VAL(STR$(42)) = 42")
+4150 //
+4160 // SEKTION 28: DIM MED NEGATIVE GRÆNSER OG OF-LÆNGDE
+4170 //
+4180 PRINT "--- [28] Tester DIM med blandede grænser og OF ---"
+4190 DIM mixed_arr(-5 .. -2)
+4200 mixed_arr(-5) := 10
+4210 mixed_arr(-2) := 20
+4220 EXEC assert_lig(mixed_arr(-5) + mixed_arr(-2), 30, "DIM mixed_arr(-5 .. -2) og sum 10+20=30")
+4230 DIM mixed_str$(1:3) OF 5
+4240 mixed_str$(1) := "abc"
+4250 mixed_str$(2) := "de"
+4260 EXEC assert_str(mixed_str$(1) + mixed_str$(2), "abcde", "DIM mixed_str$(1:3) OF 5 og konkatenation")
+4270 //
+4280 // AFSLUTTENDE TESTRAPPORT
+4290 //
+4300 PRINT ""
+4310 PRINT "================================================================"
+4320 PRINT USING "  TESTRAPPORT: ### ud af ### tests bestået (Fejl: ##)": antal_ok%, antal_tests%, antal_fejl%
+4330 IF antal_fejl% = 0 THEN
+4340   PRINT "  STATUS: ALLE COMAL-80 SYNTAKS- OG KERNETESTS BESTÅET 100%!"
+4350 ELSE
+4360   PRINT "  STATUS: DER OPSTOD FEJL UNDER TESTKØRSLEN!"
+4370 ENDIF
+4380 PRINT "================================================================"
+4390 END
+4400 //
+4410 // PROCEDURER OG FUNKTIONER (PROC / FUNC)
+4420 //
+4430 PROC assert_lig(aktuel, forventet, beskrivelse$)
+4440   antal_tests% :+ 1
+4450   IF ABS(aktuel - forventet) < 0.0001 THEN
+4460     antal_ok% :+ 1
+4470     PRINT "  [OK]   "; beskrivelse$; " => "; aktuel
+4480   ELSE
+4490     antal_fejl% :+ 1
+4500     PRINT "  [FEJL] "; beskrivelse$; " (Fik: "; aktuel; ", Forventede: "; forventet; ")"
+4510   ENDIF
+4520 ENDPROC assert_lig
+4530 //
+4540 PROC assert_str(aktuel$, forventet$, beskrivelse$)
+4550   antal_tests% :+ 1
+4560   IF aktuel$ = forventet$ THEN
+4570     antal_ok% :+ 1
+4580     PRINT "  [OK]   "; beskrivelse$; " => """; aktuel$; """"
+4590   ELSE
+4600     antal_fejl% :+ 1
+4610     PRINT "  [FEJL] "; beskrivelse$; " (Fik: """; aktuel$; """, Forventede: """; forventet$; """)"
+4620   ENDIF
+4630 ENDPROC assert_str
+4640 //
+4650 PROC assert_sand(betingelse%, beskrivelse$)
+4660   EXEC assert_lig(betingelse%, 1, beskrivelse$)
+4670 ENDPROC assert_sand
+4680 //
+4690 PROC test_closed_scope(tillæg) CLOSED
+4700   IMPORT glob_delt
+4710   glob_x := 9999
+4720   glob_delt :+ tillæg
+4730 ENDPROC test_closed_scope
+4740 //
+4750 PROC ombyt_ref(REF a, REF b) CLOSED
+4760   midl := a
+4770   a := b
+4780   b := midl
+4790 ENDPROC ombyt_ref
+4800 //
+4810 FUNC fib(n%) CLOSED
+4820   IF n% <= 1 THEN RETURN 1 - (1 - n%)
+4830   RETURN fib(n% - 1) + fib(n% - 2)
+4840 ENDFUNC fib
+4850 //
+4860 FUNC sfd(a%, b%) CLOSED
+4870   IF b% = 0 THEN RETURN a%
+4880   RETURN sfd(b%, a% MOD b%)
+4890 ENDFUNC sfd
+4900 //
+4910 FUNC romertal$(tal%) CLOSED
+4920   DIM v%(1:7), sym$(1:7) OF 2
+4930   v%(1) := 1000; sym$(1) := "M"
+4940   v%(2) := 900;  sym$(2) := "CM"
+4950   v%(3) := 500;  sym$(3) := "D"
+4960   v%(4) := 100;  sym$(4) := "C"
+4970   v%(5) := 50;   sym$(5) := "L"
+4980   v%(6) := 10;   sym$(6) := "X"
+4990   v%(7) := 4;    sym$(7) := "IV"
+5000   res$ := ""
+5010   rest% := tal%
+5020   FOR i% := 1 TO 7 DO
+5030     WHILE rest% >= v%(i%) DO
+5040       res$ := res$ + TRIM$(sym$(i%))
+5050       rest% :- v%(i%)
+5060     ENDWHILE
+5070   ENDFOR i%
+5080   RETURN res$
+5090 ENDFUNC romertal$
+5100 //
+5110 PROC tegn_master_grafik CLOSED
+5120   EXEC CLEAR
+5130   EXEC PENCOLOR(2)
+5140   EXEC RECT(-180, -130, 180, 130, 0)
+5150   EXEC PENCOLOR(3)
+5160   EXEC CIRCLE(0, 0, 95, 0)
+5170   EXEC HOME
+5180   EXEC PENDOWN
+5190   FOR p% := 1 TO 12 DO
+5200     EXEC PENCOLOR((p% MOD 6) + 1)
+5210     FOR side% := 1 TO 5 DO
+5220       EXEC FORWARD(55)
+5230       EXEC RIGHT(72)
+5240     ENDFOR side%
+5250     EXEC RIGHT(30)
+5260   ENDFOR p%
+5270   EXEC PENUP
+5280   EXEC PENCOLOR(1)
+5290   EXEC TEXT(-165, 110, "RC759 PICCOLINE - MASTERTEST.CPL OK")
+5300   EXEC HOME
+5310 ENDPROC tegn_master_grafik
+5320 //
+5330 PROC byt_to_ref(REF a, REF b) CLOSED
+5340   tmp := a
+5350   a := b
+5360   b := tmp
+5370 ENDPROC byt_to_ref
+5380 //
+5390 PROC increment_ref(REF x) CLOSED
+5400   x := x + 1
+5410 ENDPROC increment_ref
+5420 //
+5430 PROC set_ref_abs(REF x, ny_val) CLOSED
+5440   x := ny_val
+5450 ENDPROC set_ref_abs
+5460 //
+5470 PROC ombyt_ref_aaben(REF a, REF b)
+5480   tmp := a
+5490   a := b
+5500   b := tmp
+5510 ENDPROC ombyt_ref_aaben
+5520 //
+5530 PROC test_scope_precedens CLOSED
+5540   prec_global := 9999
+5550 ENDPROC test_scope_precedens
+5560 //
+5570 PROC test_import_scope CLOSED
+5580   IMPORT prec_import
+5590   prec_import :+ 25
+5600 ENDPROC test_import_scope
+5610 //
+5620 PROC test_closed_array CLOSED
+5630   DIM lokal_arr(1:5)
+5640   lokal_arr(1) := 42
+5650   lokal_arr(5) := 99
+5660   global_test_arr_sum := lokal_arr(1) + lokal_arr(5)
+5670 ENDPROC test_closed_array
+5680 //
+5690 PROC test_closed_dim_of CLOSED
+5700   DIM lokal_str$ OF 10
+5710   lokal_str$ := "test"
+5720   global_test_str$ := lokal_str$
+5730 ENDPROC test_closed_dim_of
+5740 //
+5750 PROC rekursiv_sum(fra%, til%, REF akk) CLOSED
+5760   IF fra% > til% THEN RETURN
+5770   akk := akk + fra%
+5780   EXEC rekursiv_sum(fra% + 1, til%, akk)
+5790 ENDPROC rekursiv_sum
