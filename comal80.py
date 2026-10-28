@@ -389,16 +389,14 @@ class Parser:
 
     def term(self):
         node = self.factor()
-        # Tjek BÅDE for OP-typen (*, /, ^) OG Keyword-typerne (MOD, DIV)
+        # Retter 'MOD' / 'DIV' problemet:
         while (self.current_token.type == 'OP' and self.current_token.value in ('*', '/', '^')) or \
               self.current_token.type in ('MOD', 'DIV'):
-            
             tok = self.current_token
             if tok.type in ('MOD', 'DIV'):
                 self.eat(tok.type)
             else:
                 self.eat('OP')
-                
             node = BinOp(node, tok, self.factor())
         return node
 
@@ -431,12 +429,10 @@ class Parser:
         if self.current_token.type == 'EOF':
             return None
             
-        # Fang linjenummeret INDEN vi parser selve udtrykket
         line_no = self.current_token.line 
         
         node = self._parse_statement()
         
-        # Injicér linjenummeret dynamisk i den færdige node
         if node is not None:
             node.line = line_no
             
@@ -740,7 +736,6 @@ class Interpreter:
         self.data_buffer = []     
         self.data_ptr = 0
         
-        # Holder styr på det aktive linjenummer under evaluering
         self.current_line = None
 
     def pre_scan(self, node):
@@ -784,7 +779,6 @@ class Interpreter:
         if node is None:
             return None
             
-        # Opdater linjenummer, hvis vi bevæger os til en node med linjedata
         if hasattr(node, 'line'):
             self.current_line = node.line
         elif hasattr(node, 'token') and hasattr(node.token, 'line'):
@@ -796,7 +790,6 @@ class Interpreter:
         try:
             return visitor(node)
         except InterpreterError as ie:
-            # Hvis fejlen ikke kender sit linjenummer, griber vi den, tilføjer det, og smider den igen
             if ie.line is None:
                 raise InterpreterError(ie.raw_message, self.current_line)
             raise
@@ -815,6 +808,17 @@ class Interpreter:
     def visit_ArrayAccess(self, node):
         name = node.name.upper()
         indices = tuple(int(self.visit(idx)) for idx in node.indices)
+        array_key = f"{name}{indices}"
+        return self.get_var(array_key)
+
+    def visit_FuncCall(self, node):
+        name = node.name.upper()
+        
+        # Her ville man normalt tjekke om 'name' er en indbygget funktion (SIN, COS, CHR$)
+        # eller en brugerdefineret FUNC.
+        # Indtil vi får bygget rigtige funktioner, behandler vi alt som et Array-opslag:
+        
+        indices = tuple(int(self.visit(arg)) for arg in node.args)
         array_key = f"{name}{indices}"
         return self.get_var(array_key)
 
@@ -1180,6 +1184,7 @@ class PiccolineTerminal(QPlainTextEdit):
             return
             
         super().keyPressEvent(event)
+
 
 class ComalMainWindow(QMainWindow):
     def __init__(self):
