@@ -1,12 +1,16 @@
+import sys
 import re
+import os
 from dataclasses import dataclass
 from typing import Any
+from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QWidget, QInputDialog
+from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import Qt
 
 # ==========================================
 # DEL 1: TOKENS OG LEXER
 # ==========================================
 
-# COMAL-80 specifikke nøgleord
 KEYWORDS = {
     'IF', 'THEN', 'ELIF', 'ELSE', 'ENDIF',
     'FOR', 'TO', 'STEP', 'DO', 'ENDFOR',
@@ -18,7 +22,8 @@ KEYWORDS = {
     'DATA', 'READ', 'RESTORE',
     'PRINT', 'INPUT',
     'AND', 'OR', 'NOT', 'MOD', 'DIV',
-    'GOTO', 'OPEN', 'CLOSE', 'FILE', 'WRITE'
+    'GOTO', 'OPEN', 'CLOSE', 'FILE', 'WRITE',
+    'REM', 'END', 'STOP', 'PAGE'
 }
 
 @dataclass
@@ -60,14 +65,13 @@ class Lexer:
             self.advance()
 
     def skip_comment(self):
-        # COMAL-80 kommentarer starter typisk med // eller er in-line
         while self.current_char is not None and self.current_char != '\n':
             self.advance()
 
     def parse_string(self):
         result = ''
         start_col = self.col_no
-        self.advance() # Skip start-gåseøjne
+        self.advance() 
         
         while self.current_char is not None and self.current_char != '"':
             result += self.current_char
@@ -76,7 +80,7 @@ class Lexer:
         if self.current_char is None:
             raise LexerError("Uafsluttet tekststreng", self.line_no, start_col)
             
-        self.advance() # Skip slut-gåseøjne
+        self.advance() 
         return Token('STRING', result, self.line_no, start_col)
 
     def parse_number(self):
@@ -105,7 +109,6 @@ class Lexer:
             result += self.current_char
             self.advance()
             
-        # Tjek for COMAL-80 typesuffiks (% for heltal, $ for strenge)
         if self.current_char in ('%', '$'):
             result += self.current_char
             self.advance()
@@ -138,9 +141,12 @@ class Lexer:
                 return self.parse_number()
                 
             if self.current_char.isalpha():
-                return self.parse_identifier()
+                tok = self.parse_identifier()
+                if tok.type == 'REM':
+                    self.skip_comment()
+                    continue
+                return tok
                 
-            # Operators and punctuation
             if self.current_char == ':' and self.pos + 1 < len(self.text) and self.text[self.pos+1] == '=':
                 tok = Token('ASSIGN', ':=', self.line_no, self.col_no)
                 self.advance(); self.advance()
@@ -172,15 +178,13 @@ class Lexer:
             if tok.type == 'EOF':
                 break
         return tokens
+
 # ==========================================
-# DEL 2: AST NODER (Abstrakt Syntakstræ)
+# DEL 2: AST NODER
 # ==========================================
 
-class AST:
-    """Basisklasse for alle noder i syntakstræet."""
-    pass
+class AST: pass
 
-# --- 1. PRIMITIVE VÆRDIER OG VARIABLER ---
 class Num(AST):
     def __init__(self, token):
         self.token = token
@@ -200,9 +204,8 @@ class ArrayAccess(AST):
     def __init__(self, var_token, indices):
         self.token = var_token
         self.name = var_token.value
-        self.indices = indices  # Liste af udtryk (f.eks. tabel(i% + 1))
+        self.indices = indices
 
-# --- 2. UDTRYK (EXPRESSIONS) ---
 class BinOp(AST):
     def __init__(self, left, op_token, right):
         self.left = left
@@ -222,16 +225,15 @@ class FuncCall(AST):
         self.name = func_token.value
         self.args = args
 
-# --- 3. ALMINDELIGE STATEMENTS ---
 class Assign(AST):
     def __init__(self, target, expr):
-        self.target = target  # Kan være en Var eller en ArrayAccess
+        self.target = target
         self.expr = expr
 
 class Print(AST):
     def __init__(self, exprs, end_char='\n'):
         self.exprs = exprs
-        self.end_char = end_char  # Håndterer PRINT "A", (tab) vs PRINT "A"; (ingen newline)
+        self.end_char = end_char
 
 class Input(AST):
     def __init__(self, prompt, target):
@@ -240,22 +242,20 @@ class Input(AST):
 
 class Dim(AST):
     def __init__(self, declarations):
-        # Liste af tupeler: (Var_token, [størrelser...]) eller (Var_token, max_string_length)
         self.declarations = declarations
 
 class Data(AST):
     def __init__(self, values):
-        self.values = values  # Liste af konstante tokens (Num eller StringVal)
+        self.values = values
 
 class Read(AST):
     def __init__(self, targets):
-        self.targets = targets  # Liste af variabler, der modtager data
+        self.targets = targets
 
 class Restore(AST):
     def __init__(self, line_number_expr=None):
         self.line_number_expr = line_number_expr
 
-# --- 4. KONTROLSTRUKTURER ---
 class Block(AST):
     def __init__(self, statements):
         self.statements = statements
@@ -264,8 +264,8 @@ class If(AST):
     def __init__(self, condition, true_block, elifs, false_block):
         self.condition = condition
         self.true_block = true_block
-        self.elifs = elifs        # Liste af (condition, block) tuples
-        self.false_block = false_block  # Kan være None
+        self.elifs = elifs
+        self.false_block = false_block
 
 class For(AST):
     def __init__(self, var, start_expr, end_expr, step_expr, block):
@@ -285,12 +285,11 @@ class Repeat(AST):
         self.block = block
         self.condition = condition
 
-# --- 5. PROCEDURER OG FUNKTIONER ---
 class ProcDecl(AST):
     def __init__(self, name_token, params, block):
         self.name_token = name_token
         self.name = name_token.value
-        self.params = params  # Liste af Var noder
+        self.params = params
         self.block = block
 
 class FuncDecl(AST):
@@ -309,8 +308,13 @@ class Exec(AST):
 class Return(AST):
     def __init__(self, expr=None):
         self.expr = expr
+
+class End(AST): pass
+class Stop(AST): pass
+class Page(AST): pass
+
 # ==========================================
-# DEL 3: PARSER (Recursive Descent)
+# DEL 3: PARSER
 # ==========================================
 
 class ParserError(Exception):
@@ -342,7 +346,6 @@ class Parser:
         while self.current_token.type == 'NEWLINE':
             self.eat('NEWLINE')
 
-    # --- UDTRYK (EXPRESSIONS) ---
     def factor(self):
         tok = self.current_token
         if tok.type == 'OP' and tok.value in ('+', '-'):
@@ -367,7 +370,6 @@ class Parser:
             return node
         elif tok.type == 'ID':
             self.eat('ID')
-            # Tjek om det er et array-opslag, et funktionskald eller en variabel
             if self.current_token.type == 'OP' and self.current_token.value == '(':
                 self.eat('OP')
                 args = []
@@ -380,14 +382,9 @@ class Parser:
                     self.eat('OP')
                 else:
                     self.error("Forventede ')' efter argumenter/indeks")
-                
-                # Hvis vi ved det er et array vs funktion (typisk klares det i interpreteren, 
-                # men vi lader AST'en skelne mellem generiske ID-kald her. Vi bruger FuncCall 
-                # for nu; ArrayAccess håndteres også derhjemme under evaluering).
                 return FuncCall(tok, args)
             else:
                 return Var(tok)
-        
         self.error(f"Uventet token i udtryk: {tok.type} '{tok.value}'")
 
     def term(self):
@@ -418,7 +415,6 @@ class Parser:
         return node
 
     def expr(self):
-        # Håndter AND / OR på øverste niveau
         node = self.relational_expr()
         while self.current_token.type in ('AND', 'OR'):
             tok = self.current_token
@@ -426,9 +422,23 @@ class Parser:
             node = BinOp(node, tok, self.relational_expr())
         return node
 
-    # --- STATEMENTS OG KONTROLSTRUKTURER ---
     def statement(self):
         self.skip_newlines()
+        if self.current_token.type == 'EOF':
+            return None
+            
+        # Fang linjenummeret INDEN vi parser selve udtrykket
+        line_no = self.current_token.line 
+        
+        node = self._parse_statement()
+        
+        # Injicér linjenummeret dynamisk i den færdige node
+        if node is not None:
+            node.line = line_no
+            
+        return node
+
+    def _parse_statement(self):
         tok = self.current_token
         
         if tok.type == 'PRINT':
@@ -457,14 +467,13 @@ class Parser:
             target_tok = self.current_token
             self.eat('ID')
             
-            # Håndter array input f.eks. INPUT A(1)
             if self.current_token.type == 'OP' and self.current_token.value == '(':
                 self.eat('OP')
                 indices = [self.expr()]
                 while self.current_token.type == 'OP' and self.current_token.value == ',':
                     self.eat('OP')
                     indices.append(self.expr())
-                self.eat('OP') # Forventer ')'
+                self.eat('OP')
                 target = ArrayAccess(target_tok, indices)
             else:
                 target = Var(target_tok)
@@ -474,21 +483,32 @@ class Parser:
             var_tok = self.current_token
             self.eat('ID')
             
-            target = Var(var_tok)
-            # Tjek for Array tildeling: tabel(i) := 5
+            args = []
+            has_parens = False
             if self.current_token.type == 'OP' and self.current_token.value == '(':
+                has_parens = True
                 self.eat('OP')
-                indices = [self.expr()]
-                while self.current_token.type == 'OP' and self.current_token.value == ',':
+                if not (self.current_token.type == 'OP' and self.current_token.value == ')'):
+                    args.append(self.expr())
+                    while self.current_token.type == 'OP' and self.current_token.value == ',':
+                        self.eat('OP')
+                        args.append(self.expr())
+                if self.current_token.type == 'OP' and self.current_token.value == ')':
                     self.eat('OP')
-                    indices.append(self.expr())
-                if self.current_token.value == ')':
+                else:
+                    self.error("Forventede ')'")
+                    
+            if self.current_token.type == 'ASSIGN' or (self.current_token.type == 'OP' and self.current_token.value == '='):
+                if self.current_token.type == 'ASSIGN':
+                    self.eat('ASSIGN')
+                else:
                     self.eat('OP')
-                target = ArrayAccess(var_tok, indices)
-            
-            self.eat('ASSIGN')
-            expr_node = self.expr()
-            return Assign(target, expr_node)
+                
+                target = ArrayAccess(var_tok, args) if has_parens else Var(var_tok)
+                expr_node = self.expr()
+                return Assign(target, expr_node)
+            else:
+                return Exec(var_tok, args)
 
         elif tok.type == 'EXEC':
             self.eat('EXEC')
@@ -502,39 +522,49 @@ class Parser:
                     while self.current_token.type == 'OP' and self.current_token.value == ',':
                         self.eat('OP')
                         args.append(self.expr())
-                self.eat('OP') # Forvent ')'
+                self.eat('OP') 
             return Exec(proc_tok, args)
             
         elif tok.type == 'IF':
             self.eat('IF')
             cond = self.expr()
             self.eat('THEN')
-            self.skip_newlines()
-            true_block = self.block(['ELIF', 'ELSE', 'ENDIF'])
             
-            elifs = []
-            while self.current_token.type == 'ELIF':
-                self.eat('ELIF')
-                elif_cond = self.expr()
-                self.eat('THEN')
+            if self.current_token.type == 'NEWLINE':
+                self.eat('NEWLINE')
                 self.skip_newlines()
-                elif_block = self.block(['ELIF', 'ELSE', 'ENDIF'])
-                elifs.append((elif_cond, elif_block))
+                true_block = self.block(['ELIF', 'ELSE', 'ENDIF'])
                 
-            false_block = None
-            if self.current_token.type == 'ELSE':
-                self.eat('ELSE')
-                self.skip_newlines()
-                false_block = self.block(['ENDIF'])
-                
-            self.eat('ENDIF')
-            return If(cond, true_block, elifs, false_block)
+                elifs = []
+                while self.current_token.type == 'ELIF':
+                    self.eat('ELIF')
+                    elif_cond = self.expr()
+                    self.eat('THEN')
+                    self.skip_newlines()
+                    elif_block = self.block(['ELIF', 'ELSE', 'ENDIF'])
+                    elifs.append((elif_cond, elif_block))
+                    
+                false_block = None
+                if self.current_token.type == 'ELSE':
+                    self.eat('ELSE')
+                    self.skip_newlines()
+                    false_block = self.block(['ENDIF'])
+                    
+                self.eat('ENDIF')
+                return If(cond, true_block, elifs, false_block)
+            else:
+                single_stmt = self.statement()
+                return If(cond, Block([single_stmt]), [], None)
 
         elif tok.type == 'FOR':
             self.eat('FOR')
             var_tok = self.current_token
             self.eat('ID')
-            self.eat('ASSIGN')
+            if self.current_token.type == 'ASSIGN':
+                self.eat('ASSIGN')
+            else:
+                self.eat('OP') 
+                
             start_expr = self.expr()
             self.eat('TO')
             end_expr = self.expr()
@@ -572,20 +602,26 @@ class Parser:
             name_tok = self.current_token
             self.eat('ID')
             params = []
+            
             if self.current_token.type == 'OP' and self.current_token.value == '(':
-                self.eat('OP')
-                if not (self.current_token.type == 'OP' and self.current_token.value == ')'):
+                self.eat('OP') 
+                if self.current_token.type == 'OP' and self.current_token.value == ')':
+                    self.eat('OP') 
+                else:
                     params.append(Var(self.current_token))
                     self.eat('ID')
                     while self.current_token.type == 'OP' and self.current_token.value == ',':
                         self.eat('OP')
                         params.append(Var(self.current_token))
                         self.eat('ID')
-                self.eat('OP')
+                    if self.current_token.type == 'OP' and self.current_token.value == ')':
+                        self.eat('OP')
+                    else:
+                        self.error("Forventede ')'")
+            
             self.skip_newlines()
             body = self.block(['ENDPROC'])
             self.eat('ENDPROC')
-            # Optionel name matching ved ENDPROC kan tilføjes her for striks syntaks
             if self.current_token.type == 'ID':
                 self.eat('ID')
             return ProcDecl(name_tok, params, body)
@@ -630,7 +666,19 @@ class Parser:
             
         elif tok.type == 'RESTORE':
             self.eat('RESTORE')
-            return Restore() # Simpel RESTORE uden linjenummer pt.
+            return Restore() 
+
+        elif tok.type == 'END':
+            self.eat('END')
+            return End()
+            
+        elif tok.type == 'STOP':
+            self.eat('STOP')
+            return Stop()
+            
+        elif tok.type == 'PAGE':
+            self.eat('PAGE')
+            return Page()
 
         else:
             self.error(f"Uventet statement start: {tok.type} ('{tok.value}')")
@@ -639,7 +687,9 @@ class Parser:
         statements = []
         self.skip_newlines()
         while self.current_token.type not in end_tokens and self.current_token.type != 'EOF':
-            statements.append(self.statement())
+            stmt = self.statement()
+            if stmt is not None:
+                statements.append(stmt)
             self.skip_newlines()
         return Block(statements)
 
@@ -647,21 +697,31 @@ class Parser:
         statements = []
         self.skip_newlines()
         while self.current_token.type != 'EOF':
-            statements.append(self.statement())
+            stmt = self.statement()
+            if stmt is not None:
+                statements.append(stmt)
             self.skip_newlines()
         return Block(statements)
+
 # ==========================================
-# DEL 4: INTERPRETER (Evaluator)
+# DEL 4: INTERPRETER
 # ==========================================
 
 class ReturnException(Exception):
-    """Bruges til at hoppe ud af en PROC/FUNC med en returværdi."""
     def __init__(self, value=None):
         self.value = value
 
 class InterpreterError(Exception):
-    def __init__(self, message):
-        super().__init__(f"Kørselsfejl: {message}")
+    def __init__(self, message, line=None):
+        self.raw_message = message
+        self.line = line
+        if line is not None:
+            super().__init__(f"Kørselsfejl i linje {line}: {message}")
+        else:
+            super().__init__(f"Kørselsfejl: {message}")
+
+class EndException(Exception): pass
+class StopException(Exception): pass
 
 class Interpreter:
     def __init__(self, ast_root, ui_print, ui_input):
@@ -670,14 +730,16 @@ class Interpreter:
         self.ui_input = ui_input
         
         self.globals = {}
-        self.call_stack = []      # Liste af lokale scopes (dictionaries)
-        self.procedures = {}      # Registrerede procedurer
+        self.call_stack = []      
+        self.procedures = {}      
         
-        self.data_buffer = []     # Til DATA / READ
+        self.data_buffer = []     
         self.data_ptr = 0
+        
+        # Holder styr på det aktive linjenummer under evaluering
+        self.current_line = None
 
     def pre_scan(self, node):
-        """Kører før selve eksekveringen for at opsamle PROC's og DATA."""
         if isinstance(node, Block):
             for stmt in node.statements:
                 self.pre_scan(stmt)
@@ -689,21 +751,17 @@ class Interpreter:
 
     def get_var(self, name):
         name = name.upper()
-        # Kig først i lokalt scope, hvis vi er i en PROC
         if self.call_stack and name in self.call_stack[-1]:
             return self.call_stack[-1][name]
-        # Ellers kig globalt
         if name in self.globals:
             return self.globals[name]
             
-        # Implicit deklaration hvis den ikke findes
         default_val = "" if name.endswith('$') else 0
         self.set_var(name, default_val)
         return default_val
 
     def set_var(self, name, value):
         name = name.upper()
-        # COMAL-80 Typehåndtering
         if name.endswith('%'):
             try: value = int(float(value))
             except: value = 0
@@ -721,14 +779,27 @@ class Interpreter:
     def visit(self, node):
         if node is None:
             return None
+            
+        # Opdater linjenummer, hvis vi bevæger os til en node med linjedata
+        if hasattr(node, 'line'):
+            self.current_line = node.line
+        elif hasattr(node, 'token') and hasattr(node.token, 'line'):
+            self.current_line = node.token.line
+            
         method_name = f'visit_{type(node).__name__}'
         visitor = getattr(self, method_name, self.generic_visit)
-        return visitor(node)
+        
+        try:
+            return visitor(node)
+        except InterpreterError as ie:
+            # Hvis fejlen ikke kender sit linjenummer, griber vi den, tilføjer det, og smider den igen
+            if ie.line is None:
+                raise InterpreterError(ie.raw_message, self.current_line)
+            raise
 
     def generic_visit(self, node):
         raise InterpreterError(f"Mangler implementering for node: {type(node).__name__}")
 
-    # --- PRIMITIVE NODER ---
     def visit_Block(self, node):
         for stmt in node.statements:
             self.visit(stmt)
@@ -738,13 +809,11 @@ class Interpreter:
     def visit_Var(self, node): return self.get_var(node.name)
 
     def visit_ArrayAccess(self, node):
-        # Simpel implementering af 1D/2D arrays lagret i dictionary
         name = node.name.upper()
         indices = tuple(int(self.visit(idx)) for idx in node.indices)
         array_key = f"{name}{indices}"
         return self.get_var(array_key)
 
-    # --- UDTRYK (EXPRESSIONS) ---
     def visit_UnaryOp(self, node):
         val = self.visit(node.expr)
         if node.op == '-': return -val
@@ -758,7 +827,6 @@ class Interpreter:
         right = self.visit(node.right)
         op = node.op
 
-        # Matematiske operatorer
         if op == '+':
             if isinstance(left, str) or isinstance(right, str):
                 return str(left) + str(right)
@@ -774,7 +842,6 @@ class Interpreter:
             if right == 0: raise InterpreterError("Division med nul")
             return left // right
 
-        # Logiske og relationelle operatorer (Returnerer 1 for Sand, 0 for Falsk i standard COMAL-80 stil)
         if op == '=': return 1 if left == right else 0
         if op == '<>': return 1 if left != right else 0
         if op == '<': return 1 if left < right else 0
@@ -787,7 +854,6 @@ class Interpreter:
 
         raise InterpreterError(f"Ukendt operator: {op}")
 
-    # --- STATEMENTS ---
     def visit_Assign(self, node):
         val = self.visit(node.expr)
         if type(node.target).__name__ == 'ArrayAccess':
@@ -802,7 +868,6 @@ class Interpreter:
         out_str = ""
         for expr in node.exprs:
             res = self.visit(expr)
-            # Simuler COMAL formatering: Heltal udskrives uden decimaler
             if isinstance(res, float) and res.is_integer():
                 res = int(res)
             out_str += str(res) + " "
@@ -820,7 +885,6 @@ class Interpreter:
         else:
             self.set_var(node.target.name, val)
 
-    # --- KONTROLSTRUKTURER ---
     def visit_If(self, node):
         if self.visit(node.condition):
             self.visit(node.true_block)
@@ -849,7 +913,6 @@ class Interpreter:
             
             self.visit(node.block)
             
-            # Opdater variablen
             current = self.get_var(var_name)
             self.set_var(var_name, current + step_val)
 
@@ -860,12 +923,11 @@ class Interpreter:
     def visit_Repeat(self, node):
         while True:
             self.visit(node.block)
-            if self.visit(node.condition):  # REPEAT ... UNTIL condition er opfyldt
+            if self.visit(node.condition): 
                 break
 
-    # --- PROCEDURER / DATA ---
     def visit_ProcDecl(self, node):
-        pass # Opsamles i pre_scan
+        pass 
 
     def visit_Exec(self, node):
         proc_name = node.name.upper()
@@ -874,10 +936,8 @@ class Interpreter:
             
         proc = self.procedures[proc_name]
         
-        # Evaluer argumenter i nuværende scope
         arg_values = [self.visit(arg) for arg in node.args]
         
-        # Opret nyt lokalt scope
         local_scope = {}
         for param, val in zip(proc.params, arg_values):
             local_scope[param.name.upper()] = val
@@ -887,12 +947,12 @@ class Interpreter:
         try:
             self.visit(proc.block)
         except ReturnException:
-            pass # PROC kan returnere tidligt
+            pass 
         finally:
-            self.call_stack.pop() # Fjern lokalt scope uanset hvad
+            self.call_stack.pop() 
 
     def visit_Data(self, node):
-        pass # Opsamles i pre_scan
+        pass
 
     def visit_Read(self, node):
         for target in node.targets:
@@ -905,16 +965,13 @@ class Interpreter:
     def visit_Restore(self, node):
         self.data_ptr = 0
 
-    # --- KØRSEL ---
+    def visit_End(self, node): raise EndException()
+    def visit_Stop(self, node): raise StopException()
+    def visit_Page(self, node): self.ui_print("\n" * 29, '\n')
+
     def interpret(self):
         self.pre_scan(self.ast)
         self.visit(self.ast)
-import sys
-import re
-import os
-from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QWidget, QInputDialog
-from PySide6.QtGui import QTextCursor
-from PySide6.QtCore import Qt
 
 # ==========================================
 # DEL 5: MILJØ & PYSIDE6 GUI (RC759 Piccoline)
@@ -923,13 +980,15 @@ from PySide6.QtCore import Qt
 class PiccolineTerminal(QPlainTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.program_memory = {}  # Hukommelse for linjenumre: { 10: "PRINT 1" }
+        self.program_memory = {} 
         
-        # AUTO-mode tilstand
         self.auto_mode = False
         self.auto_current = 10
         self.auto_step = 10
         
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         self.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #052005;
@@ -963,34 +1022,25 @@ class PiccolineTerminal(QPlainTextEdit):
     def process_command(self, cmd_line):
         cmd_line = cmd_line.strip()
         if not cmd_line:
-            # En tom linje afslutter AUTO mode i standard COMAL
             if self.auto_mode:
                 self.auto_mode = False
             return
 
-        # 1. Er det indtastning af kildekode? (Starter med et tal)
         match_line = re.match(r'^(\d+)\s*(.*)', cmd_line)
         if match_line:
             line_num = int(match_line.group(1))
             code = match_line.group(2).strip()
             
             if code:
-                # RC's editor tjekker typisk syntaks ved indtastning. 
-                # For at gøre det, kunne vi køre Lexer/Parser på den enkelte linje her,
-                # men for at tillade ufærdige blokke (IF uden ENDIF) gemmer vi den bare råt:
                 self.program_memory[line_num] = code
             else:
-                # Slet linje hvis koden er tom
                 self.program_memory.pop(line_num, None)
                 
             if self.auto_mode:
                 self.auto_current += self.auto_step
             return
 
-        # Hvis vi er i AUTO-mode og brugeren taster en kommando, afbrydes AUTO
         self.auto_mode = False
-
-        # 2. Miljø-kommandoer
         cmd_upper = cmd_line.upper()
         
         if cmd_upper == "NEW":
@@ -1054,7 +1104,6 @@ class PiccolineTerminal(QPlainTextEdit):
                 self.print_output("SYNKTAKSFEJL: LOAD \"filnavn\"", '\n')
             return
 
-        # 3. Direct mode (Eksekver som en enkelt linje kode)
         self.execute_source(cmd_line)
 
     def run_program(self):
@@ -1081,22 +1130,25 @@ class PiccolineTerminal(QPlainTextEdit):
             self.print_output(str(pe), '\n')
         except InterpreterError as ie:
             self.print_output(str(ie), '\n')
+        except EndException:
+            self.print_output("PROGRAM AFSLUTTET", '\n')
+        except StopException:
+            self.print_output("PROGRAM STOPPET", '\n')
         except Exception as e:
             self.print_output(f"FATAL FEJL: {str(e)}", '\n')
+
     def insertFromMimeData(self, source):
-        """Håndterer Copy/Paste ved at indlæse én linje ad gangen."""
         text = source.text()
         for line in text.split('\n'):
             line = line.strip()
             if line:
-                # Simuler at brugeren taster linjen og trykker Enter
                 self.insertPlainText(line + '\n')
                 self.process_command(line)
         self.insert_prompt()
+
     def keyPressEvent(self, event):
         cursor = self.textCursor()
         
-        # Sikr at brugeren ikke kan slette prompten eller rykke venstre for den
         if event.key() in (Qt.Key_Backspace, Qt.Key_Left):
             cursor.movePosition(QTextCursor.StartOfBlock)
             current_col = self.textCursor().positionInBlock()
@@ -1112,7 +1164,6 @@ class PiccolineTerminal(QPlainTextEdit):
             prompt_len = 5 if self.auto_mode else len(self.prompt)
             
             if len(block_text) >= prompt_len:
-                # Hvis vi er i auto_mode, består prompten af "0010 ", som også er en del af koden
                 if self.auto_mode:
                     cmd = block_text
                 else:
@@ -1125,7 +1176,6 @@ class PiccolineTerminal(QPlainTextEdit):
             return
             
         super().keyPressEvent(event)
-
 
 class ComalMainWindow(QMainWindow):
     def __init__(self):
