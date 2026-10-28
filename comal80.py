@@ -389,12 +389,16 @@ class Parser:
 
     def term(self):
         node = self.factor()
-        while self.current_token.type == 'OP' and self.current_token.value in ('*', '/', '^', 'MOD', 'DIV'):
+        # Tjek BÅDE for OP-typen (*, /, ^) OG Keyword-typerne (MOD, DIV)
+        while (self.current_token.type == 'OP' and self.current_token.value in ('*', '/', '^')) or \
+              self.current_token.type in ('MOD', 'DIV'):
+            
             tok = self.current_token
-            if tok.value in ('MOD', 'DIV'):
+            if tok.type in ('MOD', 'DIV'):
                 self.eat(tok.type)
             else:
                 self.eat('OP')
+                
             node = BinOp(node, tok, self.factor())
         return node
 
