@@ -8,7 +8,7 @@
 0080 UNTIL VALG% = 2
 0090 PRINT "Program afsluttet."
 0100 STOP
-0110
+0110 REM
 0120 PROC BEREGN_FAKULTET
 0130   INPUT "Indtast et heltal (1-10): ": TAL%
 0140   IF TAL% < 1 THEN TAL% := 1
